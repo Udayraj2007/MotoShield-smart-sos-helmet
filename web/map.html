@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MotoShield - Live Leaflet OpenStreetMap Radar</title>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+
+  <!-- Firebase App & Firestore SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body, html {
+      height: 100%;
+      width: 100%;
+      background: #0B0D12;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
+    #map {
+      height: 100vh;
+      width: 100vw;
+      background: #0F1115;
+    }
+    /* Control Bar Overlay */
+    .header-bar {
+      position: absolute;
+      top: 16px;
+      left: 60px;
+      z-index: 1000;
+      background: rgba(20, 21, 24, 0.95);
+      border: 1px solid #2C2C2E;
+      border-radius: 12px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .header-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 230, 118, 0.15);
+      color: #00E676;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #00E676;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.5; }
+      100% { transform: scale(0.9); opacity: 1; }
+    }
+    .back-btn {
+      background: #FF5E3A;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .back-btn:hover {
+      background: #e04e2c;
+    }
+    /* Leaflet Popups */
+    .leaflet-popup-content-wrapper {
+      background: #141518 !important;
+      color: #fff !important;
+      border: 1px solid #FF5E3A;
+      border-radius: 12px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.7) !important;
+      padding: 4px;
+    }
+    .leaflet-popup-tip {
+      background: #141518 !important;
+      border: 1px solid #FF5E3A;
+    }
+    .popup-box {
+      width: 260px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .popup-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .badge-verified { background: rgba(232, 33, 39, 0.2); color: #FF453A; border: 1px solid #FF453A; }
+    .badge-detected { background: rgba(255, 149, 0, 0.2); color: #FF9500; border: 1px solid #FF9500; }
+    .badge-false { background: rgba(142, 142, 147, 0.2); color: #8E8E93; border: 1px solid #8E8E93; }
+    .popup-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 2px;
+    }
+    .popup-sub {
+      color: #8E8E93;
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+    .popup-grid {
+      background: #1C1C1E;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .popup-grid-item span {
+      display: block;
+      color: #8E8E93;
+      font-size: 9px;
+    }
+    .popup-grid-item strong {
+      color: #fff;
+      font-size: 11px;
+    }
+    .popup-link {
+      display: block;
+      text-align: center;
+      background: #007AFF;
+      color: #fff;
+      text-decoration: none;
+      padding: 7px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 11px;
+    }
+    .popup-link:hover {
+      background: #0062cc;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating HUD Header -->
+  <div class="header-bar">
+    <a href="/" class="back-btn">← Dashboard</a>
+    <div class="header-title">MotoShield OpenStreetMap Radar</div>
+    <div class="live-badge">
+      <div class="pulse-dot"></div>
+      <span id="incident-counter">CONNECTING FIRESTORE...</span>
+    </div>
+  </div>
+
+  <!-- Leaflet Map Container -->
+  <div id="map"></div>
+
+  <script>
+    // 1. Firebase Initialization
+    const firebaseConfig = {
+      apiKey: "AIzaSyAhdlYlWdEuKj-JYiTC0EgiPi76mwz7WPI",
+      authDomain: "smart-s-o-s-helmet.firebaseapp.com",
+      projectId: "smart-s-o-s-helmet",
+      storageBucket: "smart-s-o-s-helmet.firebasestorage.app",
+      messagingSenderId: "408287684998",
+      appId: "1:408287684998:web:6c225800925d858ca0a407"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // 2. Leaflet Map Setup with Default Center (Panipat / Delhi NCR)
+    const map = L.map('map', {
+      center: [28.8, 77.1],
+      zoom: 10,
+      zoomControl: true
+    });
+
+    // 3. Tile Layers (CartoDB Voyager + OpenStreetMap fallback)
+    const voyagerTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors & CartoDB',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(map);
+
+    const osmTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    });
+
+    const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+      attribution: '&copy; CartoDB & OpenStreetMap',
+      subdomains: 'abcd',
+      maxZoom: 19
+    });
+
+    // Add Layer Control
+    L.control.layers({
+      "Street Map (Voyager) 🗺️": voyagerTiles,
+      "Standard OpenStreetMap 🌐": osmTiles,
+      "Dark Cyber Mode 🌙": darkTiles
+    }).addTo(map);
+
+    // 4. Marker Icons (Using Leaflet default & color markers)
+    const redIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    const orangeIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    const greyIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    const blueIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    // Markers state tracking
+    const markersMap = {};
+    let isFirstLoad = true;
+
+    // 5. Real-Time Firestore Sync
+    db.collection('incident_reports').onSnapshot((snapshot) => {
+      document.getElementById('incident-counter').innerText = `${snapshot.size} LIVE INCIDENTS`;
+
+      const bounds = [];
+
+      snapshot.docChanges().forEach((change) => {
+        const id = change.doc.id;
+        const data = change.doc.data();
+
+        if (change.type === 'removed') {
+          if (markersMap[id]) {
+            map.removeLayer(markersMap[id]);
+            delete markersMap[id];
+          }
+          return;
+        }
+
+        const lat = data.latitude;
+        const lng = data.longitude;
+        if (!lat || !lng) return;
+
+        bounds.push([lat, lng]);
+
+        // Select Icon based on status
+        let icon = orangeIcon;
+        let badgeClass = 'badge-detected';
+        let badgeLabel = 'Detected Event';
+
+        if (data.status === 'verified' || data.eventCategory === 'confirmedAccident') {
+          icon = redIcon;
+          badgeClass = 'badge-verified';
+          badgeLabel = 'Confirmed Crash';
+        } else if (data.status === 'falseAlarm' || data.alertDeliveryStatus === 'cancelledByRider') {
+          icon = greyIcon;
+          badgeClass = 'badge-false';
+          badgeLabel = 'False Alarm';
+        } else if (data.eventCategory === 'reportedAccident') {
+          icon = blueIcon;
+          badgeClass = 'badge-detected';
+          badgeLabel = 'Reported SOS';
+        }
+
+        const riderName = data.riderName || 'MotoShield Rider';
+        const locationName = data.locationName || data.roadName || 'Highway Location';
+        const phone = data.riderPhone || 'N/A';
+        const device = data.deviceId || 'MOTO-HELMET-01';
+        const timeStr = data.timestamp ? (data.timestamp.toDate ? data.timestamp.toDate().toLocaleString() : data.timestamp) : 'Just Now';
+        const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+
+        const popupContent = `
+          <div class="popup-box">
+            <span class="popup-badge ${badgeClass}">${badgeLabel}</span>
+            <div class="popup-title">${locationName}</div>
+            <div class="popup-sub">${data.city || 'Telemetry Zone'} • ${lat.toFixed(4)}°, ${lng.toFixed(4)}°</div>
+            <div class="popup-grid">
+              <div class="popup-grid-item">
+                <span>RIDER</span>
+                <strong>${riderName}</strong>
+              </div>
+              <div class="popup-grid-item">
+                <span>DEVICE</span>
+                <strong>${device}</strong>
+              </div>
+              <div class="popup-grid-item">
+                <span>PHONE</span>
+                <strong>${phone}</strong>
+              </div>
+              <div class="popup-grid-item">
+                <span>TIME</span>
+                <strong>${timeStr}</strong>
+              </div>
+            </div>
+            ${data.notes ? `<p style="font-size:10px; color:#aaa; margin-bottom:8px;">${data.notes}</p>` : ''}
+            <a href="${mapsUrl}" target="_blank" class="popup-link">Open in Google Maps ↗</a>
+          </div>
+        `;
+
+        if (markersMap[id]) {
+          markersMap[id].setLatLng([lat, lng]);
+          markersMap[id].setIcon(icon);
+          markersMap[id].setPopupContent(popupContent);
+        } else {
+          const marker = L.marker([lat, lng], { icon: icon }).bindPopup(popupContent).addTo(map);
+          markersMap[id] = marker;
+        }
+      });
+
+      if (isFirstLoad && bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+        isFirstLoad = false;
+      }
+    }, (err) => {
+      console.error('Firestore Real-Time Stream Error:', err);
+      document.getElementById('incident-counter').innerText = 'ERROR CONNECTING';
+    });
+  </script>
+</body>
+</html>

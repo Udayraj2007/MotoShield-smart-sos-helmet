@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "408287684998",
+    "project_id": "smart-s-o-s-helmet",
+    "storage_bucket": "smart-s-o-s-helmet.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:408287684998:android:a8e057228649bb3ea0a407",
+        "android_client_info": {
+          "package_name": "com.example.smart_sos_helmet"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "408287684998-i22ho2dqg7ojou2508t5avp9hvjd3tt3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smart_sos_helmet",
+            "certificate_hash": "39166f4cbc761ef1ccf8382d6734638e6f25ce14"
+          }
+        },
+        {
+          "client_id": "408287684998-53o0evqctql1dgamoejs48ks06d84kl8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC__TKkD0bz-ESQuFxu1Ntpv1dZ3X-QBZ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "408287684998-53o0evqctql1dgamoejs48ks06d84kl8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "408287684998-fsiqtpqn537b7qgi01j93d363pkunfsa.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.smartSosHelmet"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:408287684998:android:840468cd03b9f663a0a407",
+        "android_client_info": {
+          "package_name": "com.udayraj.smartsoshelmet"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "408287684998-m6qnps97bd871p3vpuat9dpgmnlh7lf3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.udayraj.smartsoshelmet",
+            "certificate_hash": "39166f4cbc761ef1ccf8382d6734638e6f25ce14"
+          }
+        },
+        {
+          "client_id": "408287684998-53o0evqctql1dgamoejs48ks06d84kl8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC__TKkD0bz-ESQuFxu1Ntpv1dZ3X-QBZ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "408287684998-53o0evqctql1dgamoejs48ks06d84kl8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "408287684998-fsiqtpqn537b7qgi01j93d363pkunfsa.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.smartSosHelmet"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

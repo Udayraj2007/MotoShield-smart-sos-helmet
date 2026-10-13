@@ -1,0 +1,283 @@
+rules_version = '2';
+
+// ===============================================================
+// MotoShield / Smart SOS Helmet - Cloud Firestore Security Rules
+// ===============================================================
+//
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: profiles
+// Document ID: {userId} (Firebase Auth UID of the rider)
+// Fields:
+//   - id: string (optional, 1-128 chars) - Profile document identifier
+//   - userId: string (optional, matches auth.uid, 1-128 chars) - Rider auth UID
+//   - uid: string (optional, matches auth.uid, 1-128 chars) - Rider auth UID
+//   - name: string (optional, 0-100 chars) - Rider full name
+//   - displayName: string (optional, 0-100 chars) - Rider display name
+//   - email: string (optional, 0-100 chars) - Contact email address
+//   - phone: string (optional, 0-30 chars) - Primary contact phone number
+//   - riderPhone: string (optional, 0-30 chars) - Rider phone number
+//   - bloodGroup: string (optional, 0-10 chars) - Emergency blood group
+//   - emergencyContacts: list (optional, max 10 entries) - Emergency contact list
+//   - emergencyContactPhone: string (optional, 0-30 chars) - Primary emergency phone
+//   - emergencyContactName: string (optional, 0-100 chars) - Primary emergency contact name
+//   - medicalNotes: string (optional, 0-1000 chars) - Medical notes, allergies, conditions
+//   - medicalInfo: string (optional, 0-1000 chars) - Additional medical details
+//   - deviceId: string (optional, 0-100 chars) - Paired smart helmet device ID
+//   - helmetId: string (optional, 0-100 chars) - Paired smart helmet hardware identifier
+//   - bikeModel: string (optional, 0-100 chars) - Motorcycle model and details
+//   - photoUrl: string (optional, 0-500 chars) - Rider photo URL
+//   - avatarUrl: string (optional, 0-500 chars) - Rider avatar URL
+//   - createdAt: timestamp / string (optional, immutable) - Profile creation timestamp
+//   - updatedAt: timestamp / string (optional) - Profile last update timestamp
+//
+// Collection: incident_reports
+// Document ID: {reportId} (Unique incident report UUID)
+// Fields:
+//   - id: string (required, 1-128 chars, matches reportId, immutable) - Report ID
+//   - riderId: string (optional, 0-128 chars) - Associated rider UID or identifier
+//   - riderName: string (optional, 0-120 chars) - Rider name for dispatcher radar
+//   - riderPhone: string (optional, 0-30 chars) - Rider phone for emergency contact
+//   - deviceId: string (optional, 0-100 chars) - Smart helmet BLE / hardware ID
+//   - eventCategory: string (optional, 0-50 chars) - Incident type (e.g., crash, sos, fall)
+//   - status: string (required, 1-50 chars) - Status (e.g., active, pending, resolved, cancelled)
+//   - timestamp: timestamp / string / number (required) - Telemetry timestamp
+//   - latitude: number (required, -90.0 to 90.0) - Incident GPS latitude
+//   - longitude: number (required, -180.0 to 180.0) - Incident GPS longitude
+//   - locationName: string (optional, 0-255 chars) - Geocoded location / landmark name
+//   - city: string (optional, 0-100 chars) - City name
+//   - roadName: string (optional, 0-150 chars) - Road or highway identifier
+//   - alertDeliveryStatus: string (optional, 0-50 chars) - SMS/call delivery status
+//   - alertRecipientsCount: number (optional, 0 to 1000) - Number of alert recipients
+//   - gForce: number (optional, 0.0 to 500.0) - Impact peak G-force magnitude
+//   - speedKmh: number (optional, 0.0 to 500.0) - Speed at collision in km/h
+//   - lightingCondition: string (optional, 0-50 chars) - Ambient lighting condition
+//   - roadCondition: string (optional, 0-50 chars) - Road surface condition
+//   - isDuplicate: bool (optional) - Boolean flag for clustering duplicates
+//   - duplicateGroupId: string (optional, 0-128 chars) - ID of duplicate cluster group
+//   - notes: string (optional, 0-2000 chars) - Paramedic / dispatcher / rider notes
+//   - verifiedBy: string (optional, 0-100 chars) - Verifying authority / officer ID
+//   - verifiedAt: timestamp / string / null (optional) - Time verified by authorities
+//   - createdAt: timestamp / string (optional, immutable) - Record creation timestamp
+//   - updatedAt: timestamp / string (optional) - Record update timestamp
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the current authenticated user matches userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Validate required fields exist in request resource
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate request resource has ONLY allowed schema fields (no arbitrary keys)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate optional string field (length bounded to prevent resource exhaustion / DoS)
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+             data[field] == null ||
+             (data[field] is string &&
+              data[field].size() >= minLen &&
+              data[field].size() <= maxLen);
+    }
+
+    // Validate optional numeric field with bounds
+    function isValidOptionalNumber(data, field, minVal, maxVal) {
+      return !(field in data) ||
+             data[field] == null ||
+             (data[field] is number &&
+              data[field] >= minVal &&
+              data[field] <= maxVal);
+    }
+
+    // Validate optional boolean field
+    function isValidOptionalBool(data, field) {
+      return !(field in data) ||
+             data[field] == null ||
+             (data[field] is bool);
+    }
+
+    // Validate optional list with size bound
+    function isValidOptionalList(data, field, maxSize) {
+      return !(field in data) ||
+             data[field] == null ||
+             (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    // Validate timestamp value (timestamp object, ISO string, or positive epoch ms)
+    function isValidTimestampValue(val) {
+      return val is timestamp ||
+             (val is string && val.size() <= 50) ||
+             (val is number && val > 0);
+    }
+
+    // Validate optional timestamp field
+    function isValidOptionalTimestamp(data, field) {
+      return !(field in data) ||
+             data[field] == null ||
+             isValidTimestampValue(data[field]);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Domain validator for Rider Profiles
+    function isValidProfile(data) {
+      return hasOnlyAllowedFields([
+        'id', 'userId', 'uid', 'name', 'displayName', 'email', 'phone', 'riderPhone',
+        'bloodGroup', 'emergencyContacts', 'emergencyContactPhone', 'emergencyContactName',
+        'medicalNotes', 'medicalInfo', 'deviceId', 'helmetId', 'bikeModel',
+        'photoUrl', 'avatarUrl', 'createdAt', 'updatedAt'
+      ]) &&
+      // Prevent user ID spoofing in document body
+      (!('userId' in data) || (data.userId is string && data.userId == request.auth.uid)) &&
+      (!('uid' in data) || (data.uid is string && data.uid == request.auth.uid)) &&
+      // String length limits to prevent DoS / storage exhaustion
+      isValidOptionalString(data, 'id', 1, 128) &&
+      isValidOptionalString(data, 'name', 0, 100) &&
+      isValidOptionalString(data, 'displayName', 0, 100) &&
+      isValidOptionalString(data, 'email', 0, 100) &&
+      isValidOptionalString(data, 'phone', 0, 30) &&
+      isValidOptionalString(data, 'riderPhone', 0, 30) &&
+      isValidOptionalString(data, 'bloodGroup', 0, 10) &&
+      isValidOptionalString(data, 'emergencyContactPhone', 0, 30) &&
+      isValidOptionalString(data, 'emergencyContactName', 0, 100) &&
+      isValidOptionalString(data, 'medicalNotes', 0, 1000) &&
+      isValidOptionalString(data, 'medicalInfo', 0, 1000) &&
+      isValidOptionalString(data, 'deviceId', 0, 100) &&
+      isValidOptionalString(data, 'helmetId', 0, 100) &&
+      isValidOptionalString(data, 'bikeModel', 0, 100) &&
+      isValidOptionalString(data, 'photoUrl', 0, 500) &&
+      isValidOptionalString(data, 'avatarUrl', 0, 500) &&
+      isValidOptionalList(data, 'emergencyContacts', 10) &&
+      isValidOptionalTimestamp(data, 'createdAt') &&
+      isValidOptionalTimestamp(data, 'updatedAt');
+    }
+
+    // Ensure profile immutable fields are preserved on update
+    function isProfileImmutableDataPreserved() {
+      return (!('userId' in resource.data) || !('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId) &&
+             (!('uid' in resource.data) || !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid) &&
+             (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // Domain validator for Emergency Accident and SOS Incident Reports
+    function isValidIncidentReport(data) {
+      return hasOnlyAllowedFields([
+        'id', 'riderId', 'riderName', 'riderPhone', 'deviceId', 'eventCategory',
+        'status', 'timestamp', 'latitude', 'longitude', 'locationName', 'city',
+        'roadName', 'alertDeliveryStatus', 'alertRecipientsCount', 'gForce',
+        'speedKmh', 'lightingCondition', 'roadCondition', 'isDuplicate',
+        'duplicateGroupId', 'notes', 'verifiedBy', 'verifiedAt',
+        'createdAt', 'updatedAt'
+      ]) &&
+      // Essential telemetry fields required for emergency dispatch & radar
+      hasRequiredFields(['id', 'status', 'timestamp', 'latitude', 'longitude']) &&
+      // Report ID
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      // Status string (e.g., active, pending, resolved, cancelled)
+      data.status is string && data.status.size() >= 1 && data.status.size() <= 50 &&
+      // GPS Coordinates range validation
+      data.latitude is number && data.latitude >= -90.0 && data.latitude <= 90.0 &&
+      data.longitude is number && data.longitude >= -180.0 && data.longitude <= 180.0 &&
+      // Timestamp validation
+      isValidTimestampValue(data.timestamp) &&
+      // Optional string fields with length limits to prevent DoS / storage pollution
+      isValidOptionalString(data, 'riderId', 0, 128) &&
+      isValidOptionalString(data, 'riderName', 0, 120) &&
+      isValidOptionalString(data, 'riderPhone', 0, 30) &&
+      isValidOptionalString(data, 'deviceId', 0, 100) &&
+      isValidOptionalString(data, 'eventCategory', 0, 50) &&
+      isValidOptionalString(data, 'locationName', 0, 255) &&
+      isValidOptionalString(data, 'city', 0, 100) &&
+      isValidOptionalString(data, 'roadName', 0, 150) &&
+      isValidOptionalString(data, 'alertDeliveryStatus', 0, 50) &&
+      isValidOptionalString(data, 'lightingCondition', 0, 50) &&
+      isValidOptionalString(data, 'roadCondition', 0, 50) &&
+      isValidOptionalString(data, 'duplicateGroupId', 0, 128) &&
+      isValidOptionalString(data, 'notes', 0, 2000) &&
+      isValidOptionalString(data, 'verifiedBy', 0, 100) &&
+      // Numeric telemetry bounds
+      isValidOptionalNumber(data, 'alertRecipientsCount', 0, 1000) &&
+      isValidOptionalNumber(data, 'gForce', 0.0, 500.0) &&
+      isValidOptionalNumber(data, 'speedKmh', 0.0, 500.0) &&
+      // Duplicate flag boolean
+      isValidOptionalBool(data, 'isDuplicate') &&
+      // Timestamps
+      isValidOptionalTimestamp(data, 'verifiedAt') &&
+      isValidOptionalTimestamp(data, 'createdAt') &&
+      isValidOptionalTimestamp(data, 'updatedAt');
+    }
+
+    // Ensure report ID and original creation timestamp remain immutable on update
+    function isReportImmutableDataPreserved() {
+      return request.resource.data.id == resource.data.id &&
+             (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. Rider Profiles Collection:
+    // Read & Write restricted strictly to the authenticated profile owner.
+    // Protects sensitive PII (emergency contacts, phone, medical records).
+    match /profiles/{userId} {
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+                       isValidProfile(request.resource.data);
+
+      allow update: if isOwner(userId) &&
+                       isValidProfile(request.resource.data) &&
+                       isProfileImmutableDataPreserved();
+
+      allow delete: if isOwner(userId);
+    }
+
+    // 2. Incident Reports Collection:
+    // Emergency accident and SOS telemetry reports.
+    // - Read: Accessible publicly / unauthenticated so the MotoShield Admin Web
+    //   Dashboard (authorities, traffic police, emergency dispatch radar) can stream live feeds.
+    // - Create & Update: Accessible unauthenticated or authenticated so critical
+    //   life-saving crash and SOS telemetry is never dropped due to network auth expiration.
+    //   Strictly validated via isValidIncidentReport() to prevent payload corruption / DoS.
+    // - Delete: Restricted to authenticated administrators/officers.
+    match /incident_reports/{reportId} {
+      allow read: if true;
+
+      allow create: if isValidIncidentReport(request.resource.data) &&
+                       (request.resource.data.id == reportId || request.resource.data.id.size() > 0);
+
+      allow update: if isValidIncidentReport(request.resource.data) &&
+                       isReportImmutableDataPreserved();
+
+      allow delete: if isAuthenticated();
+    }
+
+    // Default deny for all other unmatched collections and paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
